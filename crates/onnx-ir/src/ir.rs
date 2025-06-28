@@ -33,7 +33,7 @@ impl Argument {
     }
 
     pub fn from_initializer(initializer: &TensorProto) -> Argument {
-        let name = initializer.name.clone();
+        let name = initializer.name.clone().replace(":", "_");
         let tensor_data = TensorData::try_from(initializer.clone())
             .unwrap_or_else(|_| panic!("invalid tensor {}", &initializer.name));
 

@@ -288,6 +288,13 @@ impl ParsedOnnxGraph {
         let mut unsupported_ops = vec![];
 
         for node in self.0.nodes {
+            for input in node.inputs.iter() {
+                if let Some(constant_node) =
+                    Self::handle_tensor_arg_constant::<PS>(input) {
+                    graph.register(constant_node);
+                }
+            }
+
             match node.node_type {
                 NodeType::Add => graph.register(Self::add_conversion(node)),
                 NodeType::ArgMax => graph.register(Self::argmax_conversion(node)),
@@ -630,6 +637,38 @@ impl ParsedOnnxGraph {
         let output = Type::from(node.outputs.first().unwrap());
 
         BinaryNode::add(lhs, rhs, output)
+    }
+
+    fn handle_tensor_arg_constant<PS: PrecisionSettings>(
+        arg: &OnnxArgument) -> Option<ConstantNode> {
+        match &arg.ty {
+            ArgType::Tensor(tensor) => {
+                if tensor.rank > 0 {
+                    if let Some(tensor_data) = &arg.value {
+                        let kind: TensorKind = tensor.elem_type.clone().into();
+                        let rank = tensor.rank;
+                        let name = arg.name.clone();
+                        let tensor_data = match tensor.elem_type {
+                            // TODO Review how double precision should be supported
+                            ElementType::Float32 | ElementType::Float64 => {
+                                serialize_data::<PS::FloatElem>(tensor_data.data.clone(), tensor_data.shape.clone())
+                            }
+                            ElementType::Int32 | ElementType::Int64 => {
+                                serialize_data::<PS::IntElem>(tensor_data.data.clone(), tensor_data.shape.clone())
+                            }
+                            // TODO support Bool tensor when it is supported by Burn
+                            _ => panic!("Unsupported constant tensor type: {:?} ", tensor.elem_type),
+                        };
+
+                        let constant_value = ConstantValue::Tensor(TensorType::new(name.clone(), rank, kind), tensor_data);
+                        return Some(ConstantNode::new(name, constant_value, Type::from(arg)));
+                    }
+                }
+            },
+            _ => {},
+        }
+
+        None
     }
 
     fn sub_conversion(node: Node) -> BinaryNode {
