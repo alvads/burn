@@ -49,6 +49,7 @@ thiserror = { workspace = true, optional = true }
 tracing-core = { workspace = true }
 tracing-subscriber = { workspace = true }
 zip = { workspace = true, optional = true }
+uuid = "1.17.0"
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

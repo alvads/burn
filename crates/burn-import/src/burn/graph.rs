@@ -39,7 +39,7 @@ pub enum RecordType {
 #[derive(Default, Debug)]
 pub struct BurnGraph<PS: PrecisionSettings> {
     nodes: Vec<Node<PS>>,
-    scope: Scope,
+    pub scope: Scope,
     imports: BurnImports,
     top_comment: Option<String>,
     default: Option<TokenStream>,
@@ -110,6 +110,7 @@ impl<PS: PrecisionSettings> BurnGraph<PS> {
                 self.register_record_file(
                     out_file,
                     &format!("burn::record::PrettyJsonFileRecorder::<{precision_ty_str}>"),
+                    None
                 );
             }
             RecordType::NamedMpkGz => {
@@ -131,6 +132,7 @@ impl<PS: PrecisionSettings> BurnGraph<PS> {
                 self.register_record_file(
                     out_file,
                     &format!("burn::record::NamedMpkGzFileRecorder::<{precision_ty_str}>"),
+                    None
                 );
             }
 
@@ -154,6 +156,7 @@ impl<PS: PrecisionSettings> BurnGraph<PS> {
                 self.register_record_file(
                     out_file,
                     &format!("burn::record::NamedMpkFileRecorder::<{precision_ty_str}>"),
+                    Some(&format!("burn::record::NamedMpkBytesRecorder::<{precision_ty_str}>")),
                 );
             }
 
@@ -175,6 +178,7 @@ impl<PS: PrecisionSettings> BurnGraph<PS> {
                     self.register_record_file(
                         out_file,
                         &format!("burn::record::BinFileRecorder::<{precision_ty_str}>"),
+                        None
                     );
                 }
             }
@@ -264,6 +268,8 @@ impl<PS: PrecisionSettings> BurnGraph<PS> {
             .iter()
             .chain(&self.graph_output_types);
 
+        self.imports.register("burn::tensor::Int");
+
         // Register imports for bool and int tensors
         for ty in all_types {
             match ty {
@@ -338,30 +344,58 @@ impl<PS: PrecisionSettings> BurnGraph<PS> {
             });
     }
 
-    fn register_record_file(&mut self, file: PathBuf, recorder_str: &str) {
+    fn register_record_file(&mut self, file: PathBuf, recorder_str: &str, recorder_str2: Option<&str>) {
         self.imports.register("burn::record::Recorder");
 
         let recorder_ty = syn::parse_str::<syn::Type>(recorder_str).unwrap();
 
         // Add default implementation
         let file = file.to_str().unwrap();
-        self.default = Some(quote! {
-            _blank_!();
-            impl<B: Backend> Default for Model<B> {
-                fn default() -> Self {
-                    Self::from_file(#file, &Default::default())
+        if let Some(recorder_str2) = recorder_str2 {
+            let recorder_ty2 = syn::parse_str::<syn::Type>(recorder_str2).unwrap();
+            self.default = Some(quote! {
+                _blank_!();
+                impl<B: Backend> Default for Model<B> {
+                    fn default() -> Self {
+                        Self::from_file(#file, &Default::default())
+                    }
                 }
-            }
-            _blank_!();
-            impl<B: Backend> Model<B> {
-                pub fn from_file(file: &str, device: &B::Device) -> Self {
-                    let record = #recorder_ty::new()
-                        .load(file.into(), device)
-                        .expect("Record file to exist.");
-                    Self::new(device).load_record(record)
+                _blank_!();
+                impl<B: Backend> Model<B> {
+                    pub fn from_file(file: &str, device: &B::Device) -> Self {
+                        let record = #recorder_ty::new()
+                            .load(file.into(), device)
+                            .expect("Record file to exist.");
+                        Self::new(device).load_record(record)
+                    }
+                    _blank_!();
+                    pub fn from_bytes(data: &[u8], device: &B::Device) -> Self {
+                        let record = #recorder_ty2::new()
+                            .load(data.into(), device)
+                            .expect("Record file to exist.");
+                        Self::new(device).load_record(record)
+                    }
                 }
-            }
-        });
+            });
+        } else {
+            self.default = Some(quote! {
+                _blank_!();
+                impl<B: Backend> Default for Model<B> {
+                    fn default() -> Self {
+                        Self::from_file(#file, &Default::default())
+                    }
+                }
+                _blank_!();
+                impl<B: Backend> Model<B> {
+                    pub fn from_file(file: &str, device: &B::Device) -> Self {
+                        let record = #recorder_ty::new()
+                            .load(file.into(), device)
+                            .expect("Record file to exist.");
+                        Self::new(device).load_record(record)
+                    }
+                }
+            });
+        }
     }
 
     fn register_record_embed(&mut self, file: PathBuf) {

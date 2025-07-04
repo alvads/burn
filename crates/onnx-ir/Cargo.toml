@@ -24,6 +24,7 @@ protobuf = { workspace = true, features = ["with-bytes"] }
 regex = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 strum = { workspace = true }
+uuid = { version = "1.17.0", features = ["v3"]}
 
 [build-dependencies]
 protobuf-codegen = { workspace = true }

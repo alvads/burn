@@ -226,7 +226,7 @@ impl TensorType {
                 kind: TensorKind::Int,
                 ..
             } => quote! {
-                Tensor<B, #dim, Int>
+                Tensor<B, #dim, burn::tensor::Int>
             },
             TensorType {
                 kind: TensorKind::Bool,

@@ -10,6 +10,7 @@ use burn::{
     tensor::{Element, TensorData},
 };
 use log::warn;
+use uuid::Uuid;
 
 use crate::{
     burn::{
@@ -289,11 +290,11 @@ impl ParsedOnnxGraph {
 
         for node in self.0.nodes {
             match node.node_type {
-                NodeType::Add => graph.register(Self::add_conversion(node)),
+                NodeType::Add => Self::add_conversion(node, &mut graph),
                 NodeType::ArgMax => graph.register(Self::argmax_conversion(node)),
                 NodeType::ArgMin => graph.register(Self::argmin_conversion(node)),
-                NodeType::Sub => graph.register(Self::sub_conversion(node)),
-                NodeType::Mul => graph.register(Self::mul_conversion(node)),
+                NodeType::Sub => Self::sub_conversion(node, &mut graph),
+                NodeType::Mul => Self::mul_conversion(node, &mut graph),
                 NodeType::Div => graph.register(Self::div_conversion(node)),
                 NodeType::Equal => graph.register(Self::equal_conversion(node)),
                 NodeType::Erf => graph.register(Self::erf_conversion(node)),
@@ -624,28 +625,86 @@ impl ParsedOnnxGraph {
         ConstantOfShapeNode::new(input, output, value)
     }
 
-    fn add_conversion(node: Node) -> BinaryNode {
-        let lhs = Type::from(node.inputs.first().unwrap());
-        let rhs = Type::from(node.inputs.get(1).unwrap());
-        let output = Type::from(node.outputs.first().unwrap());
+        fn handle_tensor_arg_constant<PS: PrecisionSettings>(
+        arg: &OnnxArgument,
+        graph: &mut BurnGraph::<PS>
+    ) {
+        if arg.passed {
+            return;
+        }
 
-        BinaryNode::add(lhs, rhs, output)
+        let mut name = arg.name.clone();
+        if name.contains(":") || name.contains(".") {
+            let namespace = Uuid::NAMESPACE_DNS;
+            name = format!("_{}_", Uuid::new_v3(&namespace, name.as_bytes()).as_simple().to_string());
+        }
+
+        match &arg.ty {
+            ArgType::Tensor(tensor) => {
+                if tensor.rank > 0 {
+                    if let Some(tensor_data) = &arg.value {
+                        let kind: TensorKind = tensor.elem_type.clone().into();
+                        let rank = tensor.rank;
+                        let tensor_data = match tensor.elem_type {
+                            // TODO Review how double precision should be supported
+                            ElementType::Float32 | ElementType::Float64 => {
+                                serialize_data::<PS::FloatElem>(
+                                    tensor_data.data.clone(),
+                                    tensor_data.shape.clone(),
+                                )
+                            }
+                            ElementType::Int32 | ElementType::Int64 => {
+                                serialize_data::<PS::IntElem>(
+                                    tensor_data.data.clone(),
+                                    tensor_data.shape.clone(),
+                                )
+                            }
+                            // TODO support Bool tensor when it is supported by Burn
+                            _ => {
+                                panic!("Unsupported constant tensor type: {:?} ", tensor.elem_type)
+                            }
+                        };
+
+                        let constant_value = ConstantValue::Tensor(
+                            TensorType::new(name.clone(), rank, kind),
+                            tensor_data,
+                        );
+                        graph.register(ConstantNode::new(name, constant_value, Type::from(arg)));
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
-    fn sub_conversion(node: Node) -> BinaryNode {
+    fn add_conversion<PS: PrecisionSettings + 'static>(node: Node, graph: &mut BurnGraph::<PS>) {
         let lhs = Type::from(node.inputs.first().unwrap());
         let rhs = Type::from(node.inputs.get(1).unwrap());
         let output = Type::from(node.outputs.first().unwrap());
+        Self::handle_tensor_arg_constant::<PS>(node.inputs.first().unwrap(), graph);
+        Self::handle_tensor_arg_constant::<PS>(node.inputs.get(1).unwrap(), graph);
 
-        BinaryNode::sub(lhs, rhs, output)
+        graph.register(BinaryNode::add(lhs, rhs, output));
     }
 
-    fn mul_conversion(node: Node) -> BinaryNode {
+    fn sub_conversion<PS: PrecisionSettings + 'static>(node: Node, graph: &mut BurnGraph::<PS>) {
         let lhs = Type::from(node.inputs.first().unwrap());
         let rhs = Type::from(node.inputs.get(1).unwrap());
         let output = Type::from(node.outputs.first().unwrap());
+        Self::handle_tensor_arg_constant::<PS>(node.inputs.first().unwrap(), graph);
+        Self::handle_tensor_arg_constant::<PS>(node.inputs.get(1).unwrap(), graph);
 
-        BinaryNode::mul(lhs, rhs, output)
+        graph.register(BinaryNode::sub(lhs, rhs, output));
+    }
+
+    fn mul_conversion<PS: PrecisionSettings + 'static>(node: Node, graph: &mut BurnGraph::<PS>) {
+        let lhs = Type::from(node.inputs.first().unwrap());
+        let rhs = Type::from(node.inputs.get(1).unwrap());
+        let output = Type::from(node.outputs.first().unwrap());
+        Self::handle_tensor_arg_constant::<PS>(node.inputs.first().unwrap(), graph);
+        Self::handle_tensor_arg_constant::<PS>(node.inputs.get(1).unwrap(), graph);
+
+        graph.register(BinaryNode::mul(lhs, rhs, output));
     }
 
     fn div_conversion(node: Node) -> BinaryNode {

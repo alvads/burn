@@ -2,6 +2,7 @@ use core::fmt;
 use half::f16;
 use std::{collections::HashMap, fmt::Formatter};
 use strum::{Display, EnumString};
+use uuid::Uuid;
 
 use crate::protos::TensorProto;
 
@@ -33,7 +34,12 @@ impl Argument {
     }
 
     pub fn from_initializer(initializer: &TensorProto) -> Argument {
-        let name = initializer.name.clone();
+        let mut name = initializer.name.clone();
+        if name.contains(":") || name.contains(".") {
+            let namespace = Uuid::NAMESPACE_DNS;
+            name = format!("_{}_", Uuid::new_v3(&namespace, name.as_bytes()).as_simple().to_string());
+        }
+
         let tensor_data = TensorData::try_from(initializer.clone())
             .unwrap_or_else(|_| panic!("invalid tensor {}", &initializer.name));
 

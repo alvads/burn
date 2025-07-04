@@ -740,6 +740,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tracing-core",
  "tracing-subscriber",
+ "uuid",
  "zip 3.0.0",
 ]
 
@@ -4030,6 +4031,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "md-5"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
+dependencies = [
+ "cfg-if",
+ "digest",
+]
+
+[[package]]
 name = "md5"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4590,6 +4601,7 @@ dependencies = [
  "rstest",
  "serde",
  "strum 0.27.1",
+ "uuid",
 ]
 
 [[package]]
@@ -7768,6 +7780,7 @@ checksum = "3cf4199d1e5d15ddd86a694e4d0dffa9c323ce759fea589f00fef9d81cc1931d"
 dependencies = [
  "getrandom 0.3.3",
  "js-sys",
+ "md-5",
  "rand 0.9.1",
  "wasm-bindgen",
 ]

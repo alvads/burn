@@ -110,6 +110,7 @@ mod tests {
         let expected = quote! {
             use burn::{
                 module::Module,
+                prelude::Int,
                 tensor::{backend::Backend, Tensor},
             };
 
